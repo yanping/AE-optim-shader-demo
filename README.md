@@ -2,7 +2,7 @@
 
 基于 **Google Cloud AlphaEvolve** 与 **Playwright WebGL 2.0 硬件加速环境** 的高性能片元着色器（Fragment Shader / GLSL）闭环演化优化系统。
 
-本项目针对任意输入的复杂着色器（如高负载 Raymarching、SDF 距离场、分形噪声等），在严格保障人眼感知渲染画质（**NVIDIA FLIP 相似度 $\ge 98\%$**）的前提下，通过 Google Cloud AlphaEvolve 调度 Gemini 大模型驱动代码重构与演化，最小化真实 GPU 硬件耗时，实现自动化性能极致压榨。
+本项目针对任意输入的复杂着色器（如高负载 Raymarching、SDF 距离场、分形噪声等），在严格保障人眼感知渲染画质（**NVIDIA FLIP 相似度 ≥ 98%**）的前提下，通过 Google Cloud AlphaEvolve 调度 Gemini 大模型驱动代码重构与演化，最小化真实 GPU 硬件耗时，实现自动化性能极致压榨。
 
 > 📘 **架构设计与理论推导**：
 > - 完整系统设计方案、多 Pass 渲染拓扑与多目标适应度仲裁数学模型详见 [PLAN.md](PLAN.md)。
@@ -218,7 +218,7 @@ make report PROJECT=03
    - 引入平滑 Sigmoid 门控函数 $G(q) = \frac{1}{1 + \exp(-50(q - \tau))}$，综合适应度 $\text{Fitness} = G(q) \times \text{Speedup}$，在保障画质的前提下最大化提速；
    - **严格单调提速准则（No Performance Regression）**：仅当候选变体通过画质门控且 $\text{Speedup} > 1.0$ 时方可入选新 Champion，杜绝性能倒退；
    - **四级分级防御与诊断反馈**：编译失败（-200 分）与画质劣化（-100 分）自动提取编译器诊断与视觉差异作为 Diagnostic Insights 回传大模型，指导下一代精准自我修正；
-   - **自适应动态松弛（Adaptive Relaxation）**：若连续 10 代无变体满足 $98\%$ 门槛，自动自适应放宽至 $95\%$ 门槛。
+   - **自适应动态松弛（Adaptive Relaxation）**：若连续 10 代无变体满足 98% 门槛，自动自适应放宽至 95% 门槛。
 
 4. **全类型纹理与 6 面 Cubemap 立方体贴图支持**:
    - 自动解析 `manifest.json` 各通道输入类型，支持 2D 贴图与 6 面 Cubemap 立方体贴图（`TEXTURE_CUBE_MAP`）；

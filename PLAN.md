@@ -10,7 +10,7 @@
    从针对单一演示场景的旧工程中，解耦并抽取出通用的 Shader 演化闭环模块：
    - **本地设备硬件评估器**：基于 Playwright + WebGL 2.0（利用 `EXT_disjoint_timer_query_webgl2` 硬件定时器）实现微秒/纳秒级精准测速，杜绝 CPU 调度抖动。
    - **全管线渲染剖析与级联演化（Cascaded Multi-pass）**：深度支持跨通道 FBO 渲染流水线（如 `Buffer A -> Buffer B -> Image`），自动解析拓扑依赖图（DAG），提供全管线 GPU 耗时占比清单（Breakdown）与核心瓶颈定位；依开销自动加权分配搜索预算，级联向前传递 Champion 接口契约，实现全管线联合提速。
-   - **权威画质门控协议**：基于 NVIDIA FLIP (ACM TOG / HPG 2020) 算法作为第一指标，结合 Wang 2004 SSIM 与 PSNR，建立自适应动态放宽门控（初始 98% $\rightarrow$ 动态降级 95%）。
+   - **权威画质门控协议**：基于 NVIDIA FLIP (ACM TOG / HPG 2020) 算法作为第一指标，结合 Wang 2004 SSIM 与 PSNR，建立自适应动态放宽门控（初始 98% → 动态降级 95%）。
    - **多目标适应度仲裁体系**：平衡硬件加速比（Speedup Ratio）与平滑画质门控乘子，严厉惩罚编译失败、语法错误及画面崩溃，严格遵循单调提速准则（$\text{Speedup} > 1.0$）以确保无性能回退。
    - **云端原生闭环演化与反馈学习**：纯粹直连 Google Cloud AlphaEvolve（基于 Gemini 3.5 Flash / 3.1 Pro 混合大模型推理），并在评估器中生成精准的 Diagnostic Insights 结构化诊断建议，指导大模型下一代自我修正。
    - **自动瓶颈识别与标定**：支持用户显式使用 `# EVOLVE-BLOCK-START` / `# EVOLVE-BLOCK-END` 标注待优化代码块；若未标注，系统自动运行 AST 静态语法与热点分析，精准定位计算瓶颈（如 Raymarching 主步进循环、重度 FBM 噪声、高频超越函数等）并自动包裹标注。
@@ -159,15 +159,26 @@ shader-optim-test/
 
 #### 1. 双目标优化数学建模
 设待优化着色器变体为 $P$，其在真实 GPU 硬件上的运行耗时为 $T(P)$（毫秒），基准代码耗时为 $T_{\text{baseline}}$。其加速比（Speedup）定义为：
-$$\text{Speedup}(P) = \frac{T_{\text{baseline}}}{T(P)}$$
+
+$$
+\text{Speedup}(P) = \frac{T_{\text{baseline}}}{T(P)}
+$$
 
 视觉保真度基于 NVIDIA FLIP 算法核算。在时间序列采样集合 $\mathcal{T} = \{t_1, t_2, \dots, t_N\}$ 下，变体渲染帧与黄金基准帧的平均感知相似度为：
-$$q(P) = 1.0 - \frac{1}{|\mathcal{T}|} \sum_{t \in \mathcal{T}} \text{FLIP}_{\text{error}}\left(I_{\text{cand}}(t), I_{\text{base}}(t)\right)$$
+
+$$
+q(P) = 1.0 - \frac{1}{\lvert \mathcal{T} \rvert} \sum_{t \in \mathcal{T}} \text{FLIP}_{\text{error}}\left(I_{\text{cand}}(t), I_{\text{base}}(t)\right)
+$$
+
 同时辅助计算结构相似度 $\text{SSIM}(P)$ 与峰值信噪比 $\text{PSNR}(P)$。
 
 #### 2. 平滑 Sigmoid 画质门控函数 (Smooth Correctness Gate)
 为了避免传统阶跃函数在阈值边缘造成的适应度震荡，定义平滑非线性门控函数 $G(q)$：
-$$G(q) = \frac{1}{1 + \exp\left(-k \cdot (q - \tau)\right)}$$
+
+$$
+G(q) = \frac{1}{1 + \exp\left(-k \cdot (q - \tau)\right)}
+$$
+
 其中：
 - $\tau$ 为当前画质门限，默认初始值为 $\tau = 0.980$（即 98% FLIP 相似度）；
 - $k$ 为陡度因子，取 $k = 50.0$。
@@ -177,7 +188,11 @@ $$G(q) = \frac{1}{1 + \exp\left(-k \cdot (q - \tau)\right)}$$
 
 #### 3. 综合适应度评分公式 (Composite Fitness Score)
 对于通过基础编译与初步画质检查的有效候选变体，其综合适应度得分定义为：
-$$\text{Fitness}(P) = G(q(P)) \times \text{Speedup}(P)$$
+
+$$
+\text{Fitness}(P) = G(q(P)) \times \text{Speedup}(P)
+$$
+
 - **优化导向**：在画质满足要求（$q \ge \tau$）时，$G(q) \approx 1.0$，适应度直接正比于硬件加速比，驱动 AlphaEvolve 最大化压榨 GPU 耗时；
 - **破损惩罚**：一旦变体改动破坏了几何轮廓或光照方程导致 $q$ 轻微下降，门控乘子 $G(q)$ 会迅速缩水，哪怕该变体拥有极高加速比，其最终得分也会大幅低于画质合格的变体。
 
@@ -186,9 +201,9 @@ $$\text{Fitness}(P) = G(q(P)) \times \text{Speedup}(P)$$
 
 | 等级 | 变体状态 | 判定准则 | 适应度得分 $\text{Score}$ | 处置动作与反馈 (Diagnostic Insights) |
 | :---: | :--- | :--- | :---: | :--- |
-| **Tier 1** | **编译与链接失败** | WebGL `compileOk == False` | **$-200.0$** | **直接硬拒绝**。提取并清洗底层 GLSL 编译器具体错误行号与堆栈原因，格式化为带有具体修改建议的诊断信息反馈给 Gemini 大模型。 |
-| **Tier 2** | **严重画质劣化** | $q < \tau$ 或 $G(q) < 0.1$ | **$-100.0 - 100 \times (1 - q)$** | **直接硬拒绝**。不更新 Champion。向大模型反馈当前 FLIP、SSIM、PSNR 数值，并指出几何轮廓或颜色失真，提示模型收敛变异幅度。 |
-| **Tier 3** | **无实际修改** | 代码与 Baseline 散列一致 | **$1.0$** | 赋予基准中性得分，不污染 Champion 池。 |
+| **Tier 1** | **编译与链接失败** | WebGL `compileOk == False` | $\mathbf{-200.0}$ | **直接硬拒绝**。提取并清洗底层 GLSL 编译器具体错误行号与堆栈原因，格式化为带有具体修改建议的诊断信息反馈给 Gemini 大模型。 |
+| **Tier 2** | **严重画质劣化** | $q < \tau$ 或 $G(q) < 0.1$ | $\mathbf{-100.0 - 100 \times (1 - q)}$ | **直接硬拒绝**。不更新 Champion。向大模型反馈当前 FLIP、SSIM、PSNR 数值，并指出几何轮廓或颜色失真，提示模型收敛变异幅度。 |
+| **Tier 3** | **无实际修改** | 代码与 Baseline 散列一致 | $\mathbf{1.0}$ | 赋予基准中性得分，不污染 Champion 池。 |
 | **Tier 4** | **有效优化变体** | `compileOk` 且 $q \ge \tau$ | $G(q) \times \text{Speedup}$ | **采纳并入库**。记录详细帧快照、硬件时间戳与各项画质指标，进入 Champion 择优池。 |
 
 #### 5. 自适应动态阈值放宽策略 (Adaptive Threshold Relaxation)
@@ -199,7 +214,11 @@ $$\text{Fitness}(P) = G(q(P)) \times \text{Speedup}(P)$$
 #### 6. Pareto 冠军遴选与严格单调提速准则 (Monotonic Pareto Champion Rule)
 为了确保演化优化过程的**严格单调性（No Performance Regression）**：
 - **准入充要条件**：一个候选变体被遴选为新一代 Champion（或覆写阶段产物）必须**同时满足**：
-  $$\text{Candidate Accepted} \quad \land \quad \text{Speedup}(P) > 1.0$$
+
+  $$
+  \text{Candidate Accepted} \quad \land \quad \text{Speedup}(P) > 1.0
+  $$
+
 - **反退化保护**：如果某一候选变体画质极佳（例如 $\text{FLIP} = 0.9998$），但由于大模型增加了分支或计算导致实际耗时增加（例如 $\text{Speedup} = 0.594\times$），系统虽然在日志中记录其有效性，但**绝对不将其推举为 Champion**，基线代码始终保持 Champion 地位，确保交付产物 100% 优于或等于原始基线。
 - **Pareto 优中选优**：在所有 $\text{Speedup} > 1.0$ 的候选变体中，选取 $\text{Fitness}$ 得分最高的个体作为最终交付代码。
 
@@ -224,8 +243,14 @@ $$\text{Fitness}(P) = G(q(P)) \times \text{Speedup}(P)$$
 - **拓扑级联向前传递**：
   按照拓扑序依次对各 Pass 启动 AlphaEvolve 优化会话。当上游 Pass（如 Buffer A）优化完成并产生 Champion 后，系统将前序代码与接口契约作为 Context 注入后序 Pass（如 Buffer B、Image）的提示词中，指导大模型在知晓输入源特性的前提下进行下游联合优化。
 - **整帧全管线加速比核算**：
-  $$\text{Pipeline Speedup} = \frac{\sum_{i=1}^M T_{\text{baseline}, i}}{\sum_{i=1}^M T_{\text{champion}, i}}$$
-  $$\text{Energy Reduction} = \max\left(0, \left(1.0 - \frac{\sum T_{\text{champion}, i}}{\sum T_{\text{baseline}, i}}\right)\right) \times 100\%$$
+
+  $$
+  \text{Pipeline Speedup} = \frac{\sum_{i=1}^M T_{\text{baseline}, i}}{\sum_{i=1}^M T_{\text{champion}, i}}
+  $$
+
+  $$
+  \text{Energy Reduction} = \max\left(0, \left(1.0 - \frac{\sum_{i=1}^M T_{\text{champion}, i}}{\sum_{i=1}^M T_{\text{baseline}, i}}\right)\right) \times 100\%
+  $$
 
 ---
 
