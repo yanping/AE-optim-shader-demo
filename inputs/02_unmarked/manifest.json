@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "id": "02_unmarked",
+  "title": "Unmarked Raymarching Primitives",
+  "author": "Antigravity Test Suite",
+  "description": "Standard SDF raymarching shader without EVOLVE-BLOCK markers to test automatic bottleneck profiling.",
+  "passes": [
+    {
+      "name": "Image",
+      "file": "shaders/image.glsl",
+      "output": "screen"
+    }
+  ]
+}

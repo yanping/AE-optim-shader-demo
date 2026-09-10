@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "id": "tokyo",
+  "title": "Tokyo by Night in the Rain",
+  "author": "Reinder Nijhoff",
+  "description": "A hyper-realistic rainy Tokyo city night raymarching shader by Reinder Nijhoff.",
+  "render": {
+    "maxPixels": 518400,
+    "maxDevicePixelRatio": 1.5,
+    "floatBuffers": false
+  },
+  "ui": {
+    "brand": "TOKYO BY NIGHT",
+    "help": [
+      "雨夜东京 · 实时反光 raymarching",
+      "拖动鼠标改变视角"
+    ]
+  },
+  "passes": [
+    {
+      "name": "Image",
+      "file": "shaders/image.glsl",
+      "output": "screen",
+      "channels": {}
+    }
+  ]
+}

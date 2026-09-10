@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest / Test Cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Python Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+
+# macOS System Files
+.DS_Store
+**/.DS_Store
+
+# Artifacts output directory (preserve directory structure via .gitkeep)
+artifacts/*
+!artifacts/.gitkeep
+
+# Sensitive / Private Task Specification
+TASK_SPEC.md
+
+# Logs
+*.log

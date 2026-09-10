@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "id": "valley-race",
+  "title": "ValleyRace",
+  "description": "A futuristic valley flight by kuvkar.",
+  "render": {
+    "maxPixels": 518400,
+    "maxDevicePixelRatio": 1.5,
+    "floatBuffers": true
+  },
+  "ui": {
+    "brand": "VALLEY RACE",
+    "help": ["自动镜头 · 实时运动模糊", "完整 Forest cubemap · 实时环境反射"]
+  },
+  "textures": {
+    "noise64": {
+      "type": "2d",
+      "file": "assets/0a40562379b63dfb89227e6d172f39fdce9022cba76623f1054a2c83d6c0ba5d.png",
+      "sampler": { "filter": "mipmap", "wrap": "repeat", "vflip": true }
+    },
+    "ground": {
+      "type": "2d",
+      "file": "assets/3871e838723dd6b166e490664eead8ec60aedd6b8d95bc8e2fe3f882f0fd90f0.jpg",
+      "sampler": { "filter": "mipmap", "wrap": "repeat", "vflip": true }
+    },
+    "environment": {
+      "type": "cubemap",
+      "files": [
+        "assets/94284d43be78f00eb6b298e6d78656a1b34e2b91b34940d02f1ca8b22310e8a0.png",
+        "assets/Forest_Left.png",
+        "assets/Forest_Top.png",
+        "assets/Forest_Bottom.png",
+        "assets/Forest_Front.png",
+        "assets/Forest_Back.png"
+      ],
+      "sampler": { "filter": "mipmap", "wrap": "clamp", "vflip": true }
+    }
+  },
+  "passes": [
+    {
+      "name": "Buffer A",
+      "file": "shaders/buffer_a.glsl",
+      "output": "buffer",
+      "initializeFromPreviousFrame": true,
+      "channels": {
+        "0": { "type": "buffer", "pass": "Buffer A", "frame": "previous" },
+        "1": { "type": "texture", "texture": "ground" },
+        "2": { "type": "texture", "texture": "noise64" },
+        "3": { "type": "texture", "texture": "environment" }
+      }
+    },
+    {
+      "name": "Buffer B",
+      "file": "shaders/buffer_b.glsl",
+      "output": "buffer",
+      "channels": { "0": { "type": "buffer", "pass": "Buffer A" } }
+    },
+    {
+      "name": "Image",
+      "file": "shaders/image.glsl",
+      "output": "screen",
+      "channels": {
+        "0": { "type": "buffer", "pass": "Buffer A" },
+        "1": { "type": "buffer", "pass": "Buffer B" }
+      }
+    }
+  ]
+}

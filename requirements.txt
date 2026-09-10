@@ -1,0 +1,25 @@
+# Core AlphaEvolve and GCP Dependencies
+google-cloud-discoveryengine>=0.11.0
+google-auth>=2.0.0
+google-api-core>=2.11.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+nest-asyncio>=1.5.0
+requests>=2.28.0
+protobuf>=4.21.0
+
+# Numerical, Image Processing, and Quality Evaluation
+numpy>=1.24.0
+scipy>=1.10.0
+pillow>=10.0.0
+scikit-image>=0.21.0
+matplotlib>=3.7.0
+FLiP>=1.2
+
+# WebGL Evaluation and Headless Browser Automation
+playwright>=1.40.0
+
+# Testing and Utilities
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pyyaml>=6.0

@@ -1,0 +1,54 @@
+[
+  {
+    "id": "tokyo",
+    "title": "Tokyo by Night in the Rain",
+    "author": "Shadertoy",
+    "manifest": "/cases/tokyo/manifest.json",
+    "baseline_gpu_ms": 12.5,
+    "baseline_fps": 30,
+    "optimized_gpu_ms": 8.2,
+    "optimized_fps": 30,
+    "speedup": 1.52,
+    "mean_ssim": 0.988,
+    "active_gate_threshold": 0.98
+  },
+  {
+    "id": "outer-space",
+    "title": "Planet Outer Space",
+    "author": "Shadertoy",
+    "manifest": "/cases/outer-space/manifest.json",
+    "baseline_gpu_ms": 4.47,
+    "baseline_fps": 30,
+    "optimized_gpu_ms": 2.42,
+    "optimized_fps": 30,
+    "speedup": 1.84,
+    "mean_ssim": 1.0,
+    "active_gate_threshold": 0.98
+  },
+  {
+    "id": "valley-race",
+    "title": "ValleyRace",
+    "author": "Shadertoy",
+    "manifest": "/cases/valley-race/manifest.json",
+    "baseline_gpu_ms": 3.54,
+    "baseline_fps": 30,
+    "optimized_gpu_ms": 2.25,
+    "optimized_fps": 30,
+    "speedup": 1.58,
+    "mean_ssim": 1.0,
+    "active_gate_threshold": 0.98
+  },
+  {
+    "id": "generators",
+    "title": "Generators",
+    "author": "Shadertoy",
+    "manifest": "/cases/generators/manifest.json",
+    "baseline_gpu_ms": 21.57,
+    "baseline_fps": 30,
+    "optimized_gpu_ms": 12.39,
+    "optimized_fps": 30,
+    "speedup": 1.74,
+    "mean_ssim": 1.0,
+    "active_gate_threshold": 0.98
+  }
+]
