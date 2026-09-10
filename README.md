@@ -215,8 +215,8 @@ make report PROJECT=03
 
 3. **多目标适应度仲裁与感知画质门控 (Multi-Objective Fitness & NVIDIA FLIP Gate)**:
    - 集成 NVIDIA HPG 2020 官方 FLIP 算法，结合 Wang et al. 2004 结构相似度（SSIM）与峰值信噪比（PSNR）；
-   - 引入平滑 Sigmoid 门控函数 $G(q) = \frac{1}{1 + \exp(-50(q - \tau))}$，综合适应度 $\text{Fitness} = G(q) \times \text{Speedup}$，在保障画质的前提下最大化提速；
-   - **严格单调提速准则（No Performance Regression）**：仅当候选变体通过画质门控且 $\text{Speedup} > 1.0$ 时方可入选新 Champion，杜绝性能倒退；
+   - 引入平滑 Sigmoid 门控函数 $`G(q) = \frac{1}{1 + \exp(-50(q - \tau))}`$，综合适应度 $`\text{Fitness} = G(q) \times \text{Speedup}`$，在保障画质的前提下最大化提速；
+   - **严格单调提速准则（No Performance Regression）**：仅当候选变体通过画质门控且 $`\text{Speedup} > 1.0`$ 时方可入选新 Champion，杜绝性能倒退；
    - **四级分级防御与诊断反馈**：编译失败（-200 分）与画质劣化（-100 分）自动提取编译器诊断与视觉差异作为 Diagnostic Insights 回传大模型，指导下一代精准自我修正；
    - **自适应动态松弛（Adaptive Relaxation）**：若连续 10 代无变体满足 98% 门槛，自动自适应放宽至 95% 门槛。
 
