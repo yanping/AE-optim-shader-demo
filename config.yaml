@@ -7,10 +7,10 @@
 
 # 1. Google Cloud & Gemini Enterprise 凭据与服务配置
 gcp:
-  project_id: "<输入你的project_id>"
+  project_id: "<YOUR_GCP_PROJECT_ID>" # 请在此填入您的 Google Cloud Project ID (例如: my-gcp-project-123)
   location: "global"
   collection: "default_collection"
-  ge_app_id: "<输入你的Gemini Enterprise app_id>"
+  ge_app_id: "<YOUR_GE_APP_ID>"       # 请在此填入您的 Gemini Enterprise App/Engine ID (例如: gemini-enterprise-12345678)
   assistant: "default_assistant"
   base_url: "discoveryengine.googleapis.com"
   # 官方 alpha_evolve 库路径 (若在其他路径可在此直接指定绝对或相对路径)

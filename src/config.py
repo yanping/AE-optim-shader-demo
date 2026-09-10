@@ -63,10 +63,10 @@ for p in search_paths:
 # ------------------------------------------------------------------------------
 # Google Cloud & Gemini Enterprise Settings
 # ------------------------------------------------------------------------------
-PROJECT_ID = os.getenv("PROJECT_ID", _gcp.get("project_id", "spartan-figure-500309-g2"))
+PROJECT_ID = os.getenv("PROJECT_ID", _gcp.get("project_id", "<YOUR_GCP_PROJECT_ID>"))
 LOCATION = os.getenv("LOCATION", _gcp.get("location", "global"))
 COLLECTION = os.getenv("COLLECTION", _gcp.get("collection", "default_collection"))
-GE_APP_ID = os.getenv("GE_APP_ID", _gcp.get("ge_app_id", "gemini-enterprise-17845428_1784542814283"))
+GE_APP_ID = os.getenv("GE_APP_ID", _gcp.get("ge_app_id", "<YOUR_GE_APP_ID>"))
 ASSISTANT = os.getenv("ASSISTANT", _gcp.get("assistant", "default_assistant"))
 BASE_URL = os.getenv("BASE_URL", _gcp.get("base_url", "discoveryengine.googleapis.com"))
 

@@ -15,7 +15,7 @@ SHADER ?=
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup auth run report profile baseline test clean
+.PHONY: help setup auth run report profile baseline test mask mask-dry clean
 
 help: ## Show available targets and usage
 	@echo "\033[1;34mAlphaEvolve Shader Optimization Framework\033[0m"
@@ -31,6 +31,8 @@ help: ## Show available targets and usage
 	@echo "  make profile PROJECT=01             # Analyze shader bottlenecks"
 	@echo "  make baseline PROJECT=01            # Capture golden frames & benchmark"
 	@echo "  make test                           # Run test suite"
+	@echo "  make mask                           # Mask personal GCP credentials"
+	@echo "  make mask-dry                       # Preview credentials masking"
 
 setup: ## Install dependencies, Playwright browser, and verify config.yaml
 	@if [ ! -d "$(VENV)" ]; then \
@@ -71,6 +73,12 @@ baseline: ## Capture golden frames and benchmark seed shader GPU time
 
 test: ## Run test suite
 	PYTHONPATH=. $(PYTEST) tests/
+
+mask: ## Mask personal GCP credentials across project files
+	@python3 scripts/mask_credentials.py
+
+mask-dry: ## Dry-run preview of credentials masking
+	@python3 scripts/mask_credentials.py --dry-run
 
 clean: ## Clean up temporary bytecode and caches
 	rm -rf __pycache__ src/__pycache__ src/evaluator_web/__pycache__ .pytest_cache

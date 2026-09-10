@@ -4,16 +4,213 @@
 
 本项目针对任意输入的复杂着色器（如高负载 Raymarching、SDF 距离场、分形噪声等），在严格保障人眼感知渲染画质（**NVIDIA FLIP 相似度 $\ge 98\%$**）的前提下，通过 Google Cloud AlphaEvolve 调度 Gemini 大模型驱动代码重构与演化，最小化真实 GPU 硬件耗时，实现自动化性能极致压榨。
 
+> 📘 **架构设计与理论推导**：
+> - 完整系统设计方案、多 Pass 渲染拓扑与多目标适应度仲裁数学模型详见 [PLAN.md](PLAN.md)。
+
 ---
 
-## 🌟 核心特性与架构亮点
+## 1. 目录规范与文件清单
+
+```text
+shader-optim-test/
+├── Makefile                     # 自动化命令入口 (setup, auth, baseline, run, report, profile, test, mask)
+├── config.yaml                  # 🌟 唯一全局配置文件 (可见、自解释、单一真实源)
+├── requirements.txt             # 项目核心依赖清单
+├── PLAN.md                      # 项目完整设计架构与多目标适应度仲裁推导
+├── README.md                    # 项目完整使用说明与操作指南
+├── alpha_evolve/                # Google Cloud AlphaEvolve 官方核心代码 (只读)
+├── scripts/                     # 运维与工程化交付脚本
+│   └── mask_credentials.py     # 🔒 自动化项目交付脱敏工具 (无硬编码敏感信息，纯标准库)
+├── inputs/                      # 待优化的着色器项目输入目录 <== 用户从这里导入shader代码
+│   ├── 01/                      # 单 Pass 项目 (含雨夜东京 Shader)
+│   ├── 02_unmarked/             # 单 Pass 项目 (无标记，用于测试自动瓶颈挖掘)
+│   └── 03/                      # 多 Pass 复杂项目 (Buffer A -> Buffer B -> Image，带 6 面 Cubemap)
+├── src/                         # 本项目核心实现
+│   ├── bottleneck.py            # 瓶颈分析、标记提取与代码重组器
+│   ├── browser_worker.py        # Playwright Chromium WebGL2 本地工作进程
+│   ├── config.py                # config.yaml 解析加载器与动态 sys.path 注入
+│   ├── evaluator.py             # 多目标评估器与自适应画质门控
+│   ├── evaluator_web/           # WebGL2 前端基准测试 Harness 页面与着色器兼容层
+│   ├── models.py                # Pydantic 遥测数据与配置模型
+│   ├── pipeline.py              # 🌟 多 Pass 管线拓扑解析、基线开销剖析与级联预算调度
+│   ├── quality.py               # NVIDIA FLIP、SSIM、PSNR 画质核算模块
+│   ├── report.py                # HTML 演化报告渲染引擎 (支持 Pipeline Breakdown)
+│   └── run_evolution.py         # Google Cloud AlphaEvolve 演化主控制器 CLI
+├── artifacts/                   # 演化产物输出目录 (按项目 ID 分离)
+│   └── 03/                      # 示例项目03的产物目录 (多通道管线)
+│       ├── baseline_frames/     # 黄金基准帧快照 (各 Pass 子目录)
+│       ├── baseline_profile.json # 全管线各 Pass 性能开销剖析文件
+│       ├── champion_buffer_a.glsl # 各 Pass 优化后的代码
+│       ├── champion_optimized.glsl # 最终优化后的主 Shader 代码 (已剔除标记)
+│       ├── evaluations.jsonl    # 历代评估记录全量 JSONL
+│       ├── metrics.json         # 性能摘要与管线分解元数据
+│       └── report.html          # 全自包含交互式 HTML 报告
+└── tests/                       # 自动化单元测试套件 (71 项测试)
+```
+
+---
+
+## 2. 前置准备与环境设置
+
+### 2.1 操作系统与基础软件要求
+- **操作系统**: macOS (Apple Silicon / Intel) 或 Linux (具备 GPU 硬件加速及 Chrome 运行环境)。
+- **Python**: Python 3.11+。
+- **Playwright 浏览器驱动**: 需安装 Playwright Chromium，支持 WebGL 2.0 硬件渲染管线与 `EXT_disjoint_timer_query_webgl2` 扩展（执行物理 GPU 微秒级纳秒级计时）。
+- **GNU Make**: 自动化工作流工具 (`make --version`)。
+- **Google Cloud SDK**: `gcloud` CLI（用于 GCP 凭证 ADC 鉴权与 API 交互）。
+
+### 2.2 创建 Python 虚拟环境与安装依赖 (首次运行必须执行)
+> [!IMPORTANT]
+> **交付前置说明**：为避免依赖冲突与体积冗余，本项目交付时不包含 `venv/` 虚拟环境目录。在您首次运行任何演化任务或测试前，**必须先在项目根目录下创建虚拟环境并安装依赖**！
+>
+> 提供了以下两种方式（任选其一即可）：
+>
+> **方式一：通过 Makefile 一键自动化初始化（强烈推荐）**
+> ```bash
+> make setup
+> ```
+> 该命令会自动检测并在当前根目录下创建 `venv` 虚拟环境、升级 pip、安装 `requirements.txt` 中的全部依赖包、自动安装 Playwright Chromium 浏览器内核并校验 `config.yaml`。
+>
+> **方式二：手动命令行分步执行**
+> ```bash
+> # 1. 确保使用 Python 3.11 或以上版本创建虚拟环境
+> python3.11 -m venv venv
+>
+> # 2. 激活虚拟环境
+> source venv/bin/activate
+>
+> # 3. 升级 pip 并安装项目核心依赖
+> pip install --upgrade pip
+> pip install -r requirements.txt
+>
+> # 4. 安装 Playwright 专用的无头 Chromium 浏览器驱动
+> playwright install chromium
+> ```
+
+### 2.3 GCP 账号与 Gemini Enterprise APP 设置
+1. **获取 Google Cloud 项目权限**：
+   - 准备一个已开通结算账号的 Google Cloud Project（记下您的 `PROJECT_ID`）。
+2. **启用 Discovery Engine API**：
+   ```bash
+   gcloud services enable discoveryengine.googleapis.com --project=<YOUR_GCP_PROJECT_ID>
+   ```
+3. **获取 Gemini Enterprise APP ID**：
+   - 在 Google Cloud Console 的 Gemini Enterprise 控制台中创建或查看应用，获取 Engine / App ID（记下您的 `GE_APP_ID`）。
+4. **IAM 权限配置**：
+   - 运行账号需具备 **Discovery Engine Editor** (`roles/discoveryengine.editor`) 或管理员角色。
+   - 官方权限设置指导可参考：[AlphaEvolve 环境与 API 访问设置文档](https://docs.cloud.google.com/gemini/enterprise/docs/alphaevolve/developer-guide/environment-and-api-access-setup?hl=zh-cn)。
+5. **本地凭据鉴权 (ADC)**：
+   ```bash
+   make auth
+   # 或手动运行：gcloud auth application-default login
+   ```
+
+---
+
+## 3. 全局配置文件说明 (`config.yaml`)
+
+项目所有设置统一在根目录 `config.yaml` 中管理，无隐藏配置文件。首次运行时请在 `config.yaml` 中填入您自己的 GCP 凭据：
+
+```yaml
+# 1. Google Cloud & Gemini Enterprise 凭据与服务配置
+gcp:
+  project_id: "<YOUR_GCP_PROJECT_ID>" # 请在此填入您的 Google Cloud Project ID (例如: my-gcp-project-123)
+  location: "global"
+  collection: "default_collection"
+  ge_app_id: "<YOUR_GE_APP_ID>"       # 请在此填入您的 Gemini Enterprise App/Engine ID (例如: gemini-enterprise-12345678)
+  assistant: "default_assistant"
+  base_url: "discoveryengine.googleapis.com"
+  alpha_evolve_path: "./alpha_evolve"   # 可改为更新后的alpha_evolve库路径
+
+# 2. 演化控制与超参数设置 (串行 GPU 评测)
+evolution:
+  max_programs_generated: 50    # 需按自己的预算设置
+  max_programs_evaluated: 50    # 需按自己的预算设置
+  concurrency: 1                # 采样并发数
+  worker_concurrency: 1         # 评估并发数 (物理 GPU 必须为 1，杜绝多任务竞争与抖动)
+  parallel_evaluation: false    # 串行化硬件评测
+  idle_timeout_s: 120
+
+# 3. Gemini 大模型生成权重混合配比
+models:
+  - name: "gemini-3.5-flash"
+    weight: 0.70
+  - name: "gemini-3.1-pro-preview"
+    weight: 0.30
+
+# 4. 感知画质门控阈值
+quality:
+  flip_initial_threshold: 0.980    # NVIDIA FLIP 初始画质门限 (≥ 98%)
+  flip_relaxed_threshold: 0.950    # 自适应放宽后的最低画质门限 (≥ 95%)
+  relaxation_patience: 10          # 连续多少代无达标变体时触发自适应放宽
+  min_ssim_threshold: 0.950        # SSIM 最低辅助门槛
+
+# 5. WebGL 2.0 本地硬件基准测试 Harness 设置
+benchmark:
+  port: 8099                       # 本地评估静态服务端口
+  headless: true                   # 是否以无头模式运行 Playwright Chromium
+  resolution: [1280, 720]          # 测速画布基准分辨率 [宽, 高]
+  sample_times: [0.0, 1.5, 3.0, 4.5, 6.0]  # 采样的着色器运行时间戳序列 (秒)
+  warmup_frames: 30                # GPU 预热渲染帧数 (避开管线编译开销)
+  timed_samples: 12                # 每次取样的硬件 GPU 计时样本数 (取中位数)
+  playwright_channel: "chrome"     # 浏览器通道 (chrome / chromium)
+```
+
+---
+
+## 4. 快速上手与 Makefile 核心工作流
+
+### 4.1 常用 Makefile 命令参考
+
+| 命令 | 说明 | 示例 |
+| :--- | :--- | :--- |
+| **`make setup`** | 初始化 Python venv、安装依赖包与 Playwright 浏览器，校验 `config.yaml`（首次必须执行） | `make setup` |
+| **`make auth`** | 调起浏览器执行 Google Cloud ADC 认证 (`gcloud auth application-default login`) | `make auth` |
+| **`make baseline`** | **全管线性能剖析**：对项目下所有 Pass 执行 GPU 硬件测速，输出耗时占比清单与核心瓶颈 | `make baseline PROJECT=03` |
+| **`make baseline` (单着色器)** | 仅针对指定单一 shader 文件捕获基准帧与 GPU 耗时 | `make baseline PROJECT=03 SHADER=shaders/buffer_a.glsl` |
+| **`make run`** | 连接 Google Cloud AlphaEvolve 执行闭环演化优化（支持方案 2 级联多 Pass 拓扑演化） | `make run PROJECT=03 PROGRAMS=50` |
+| **`make run` (指定着色器)** | 仅针对多通道项目中的某一特定 Pass 执行优化演化 | `make run PROJECT=03 SHADER=shaders/buffer_a.glsl PROGRAMS=50` |
+| **`make profile`** | 静态/AST 分析着色器代码性能瓶颈，输出建议优化的代码区间 | `make profile PROJECT=03` |
+| **`make report`** | 生成并查看自包含交互式 HTML 优化报告（含管线 Breakdown） | `make report PROJECT=03` |
+| **`make test`** | 执行全量自动化单元与集成测试套件 (包含 71 个测试项) | `make test` |
+| **`make mask`** | **项目交付脱敏**：一键将全项目配置文件、文档中的个人 `project_id`、`ge_app_id` 脱敏遮盖为占位符 | `make mask` |
+| **`make mask-dry`** | **脱敏预览**：预览脱敏匹配的文件与出现频次（Dry-run），不实际修改文件 | `make mask-dry` |
+| **`make clean`** | 清除 Python 字节码缓存和测试缓存 | `make clean` |
+
+### 4.2 典型执行流程示例
+
+```bash
+# 1. 环境初始化与云端认证
+make setup
+make auth
+
+# 2. 全管线基准测试：评估项目所有 Pass 耗时并确定核心瓶颈
+make baseline PROJECT=03
+
+# 3. 运行演化优化
+# 场景 A: 级联演化——对多 Pass 项目执行全管线拓扑级联优化（自动按开销分配预算、前序 Champion 固化传递）
+make run PROJECT=03 PROGRAMS=50
+
+# 场景 B: 单 Shader 演化——仅指定优化某一特定 Pass
+make run PROJECT=03 SHADER=shaders/buffer_a.glsl PROGRAMS=50
+
+# 场景 C: 单 Pass 项目演化（如 01）
+make run PROJECT=01 PROGRAMS=50
+
+# 4. 生成与查看全自包含 HTML 报告
+make report PROJECT=03
+```
+
+---
+
+## 5. 🌟 核心特性与架构亮点
 
 1. **真实硬件级微秒计时 (Hardware GPU Timing)**: （可换成自己的测速工具）
-   - 基于 Playwright 驱动的独立 Chromium 实例，通过 WebGL 2.0 扩展 `EXT_disjoint_timer_query_webgl2` 执行纳秒/微秒级硬件时间戳轮询。
+   - 基于 Playwright 驱动的独立 Chromium 实例，通过 WebGL 2.0 扩展 `EXT_disjoint_timer_query_webgl2` 执行纳秒/微秒级硬件时间戳轮询；
    - 彻底避免传统 CPU 端 `performance.now()` 因驱动排队与管线缓冲造成的测量误差。
 
 2. **串行化硬件基准测速 (Serialized GPU Benchmarking)**:
-   - 本地 GPU 测速采用串行单任务模式（`concurrency: 1`, `worker_concurrency: 1`, `parallel_evaluation: false`）。
+   - 本地 GPU 测速采用串行单任务模式（`concurrency: 1`, `worker_concurrency: 1`, `parallel_evaluation: false`）；
    - 杜绝多浏览器页面并发争抢物理 GPU 命令队列和上下文切换带来的抖动，保证每次测量的加速比精准可复现。
 
 3. **多目标适应度仲裁与感知画质门控 (Multi-Objective Fitness & NVIDIA FLIP Gate)**:
@@ -51,137 +248,29 @@
 
 ---
 
-## 📁 目录规范
+## 6. 🔒 项目交付脱敏与隐私安全防护 (Delivery Sanitization)
 
-```text
-shader-optim-test/
-├── alpha_evolve/              # Google Cloud AlphaEvolve 官方核心代码 (只读)
-├── artifacts/                 # 演化产物输出目录 (按项目 ID 分离)
-│   └── 03/                    # 示例项目03的产物目录 (多通道管线)
-│       ├── baseline_frames/   # 黄金基准帧快照 (各 Pass 子目录)
-│       ├── baseline_profile.json # 全管线各 Pass 性能开销剖析文件
-│       ├── champion_buffer_a.glsl # 各 Pass 优化后的代码
-│       ├── champion_optimized.glsl # 最终优化后的主 Shader 代码 (已剔除标记)
-│       ├── evaluations.jsonl  # 历代评估记录全量 JSONL
-│       ├── metrics.json       # 性能摘要与管线分解元数据
-│       └── report.html        # 全自包含交互式 HTML 报告
-├── config.yaml                # 🌟 唯一全局配置文件 (可见、自解释、单一真实源)
-├── inputs/                    # 待优化的着色器项目输入目录 <== 用户从这里导入shader代码
-│   ├── 01/                    # 单 Pass 项目 (含雨夜东京 Shader)
-│   ├── 02_unmarked/           # 单 Pass 项目 (无标记，用于测试自动瓶颈挖掘)
-│   └── 03/                    # 多 Pass 复杂项目 (Buffer A -> Buffer B -> Image，带 6 面 Cubemap)
-├── src/                       # 本项目核心实现
-│   ├── bottleneck.py          # 瓶颈分析、标记提取与代码重组器
-│   ├── browser_worker.py      # Playwright Chromium WebGL2 本地工作进程
-│   ├── config.py              # config.yaml 解析加载器与动态 sys.path 注入
-│   ├── evaluator.py           # 多目标评估器与自适应画质门控
-│   ├── evaluator_web/         # WebGL2 前端基准测试 Harness 页面与着色器兼容层
-│   ├── models.py              # Pydantic 遥测数据与配置模型
-│   ├── pipeline.py            # 🌟 多 Pass 管线拓扑解析、基线开销剖析与级联预算调度
-│   ├── quality.py             # NVIDIA FLIP、SSIM、PSNR 画质核算模块
-│   ├── report.py              # HTML 演化报告渲染引擎 (支持 Pipeline Breakdown)
-│   └── run_evolution.py       # Google Cloud AlphaEvolve 演化主控制器 CLI
-├── tests/                     # 自动化单元测试套件 (71 项测试)
-├── Makefile                   # 统一构建与执行入口
-├── requirements.txt           # 生产与测试依赖项
-└── PLAN.md                    # 项目完整设计与执行规划
-```
+为了防止在将项目打包交付或开源共享时泄漏个人 Google Cloud 凭据（`project_id`、`ge_app_id`、GCP 项目编号等），本项目内置了专业的自动化脱敏工具：
 
----
+### 6.1 一键脱敏工作流
+在向客户交付或提交开源代码前，推荐按以下两步快速操作：
 
-## ⚙️ 配置文件说明 (`config.yaml`)
+1. **执行脱敏脚本**（自动将 `config.yaml`、说明文档与配置文件中的敏感凭据替换为 `<YOUR_GCP_PROJECT_ID>` 和 `<YOUR_GE_APP_ID>`）：
+   ```bash
+   make mask
+   # 若仅预览将被替换的文件和频次（Dry-run），可运行：
+   make mask-dry
+   ```
+   > 💡 **安全设计**：脱敏脚本 [`scripts/mask_credentials.py`](scripts/mask_credentials.py) 本身**绝无任何硬编码敏感信息**，采用动态上下文探测，且仅依赖 Python 3 原生标准库，即使未激活或已删除虚拟环境亦可直接执行。并在 `config.yaml` 中为客户补充了友好的填入指引注释。
 
-项目配置统一收敛在根目录 `config.yaml` 中，主要包含五个区块：
+2. **恢复/注入自定义凭据（可选）**：
+   若需为新环境快速批量注入新凭据，可运行恢复模式：
+   ```bash
+   python3 scripts/mask_credentials.py --restore --project-id <NEW_PROJECT_ID> --app-id <NEW_GE_APP_ID>
+   ```
 
-```yaml
-# 1. Google Cloud 凭证与端点
-gcp:
-  project_id: "<填入你的project_id>"
-  ge_app_id: "<填入你的Gemini Enterprise APP id>"
-  alpha_evolve_path: "./alpha_evolve"   # 可改为更新后的alpha_evolve库的路径
-
-# 2. 演化超参数 (串行 GPU 评测)
-evolution:
-  max_programs_generated: 50  # 需按自己的预算设置
-  max_programs_evaluated: 50  # 需按自己的预算设置
-  concurrency: 1              # 采样并发数
-  worker_concurrency: 1       # 评估并发数 (物理 GPU 必须为 1)
-  parallel_evaluation: false  # 串行化评测，杜绝硬件资源争抢
-  idle_timeout_s: 120
-
-# 3. 大模型混合配比
-models:
-  - name: "gemini-3.5-flash"
-    weight: 0.70
-  - name: "gemini-3.1-pro-preview"
-    weight: 0.30
-
-# 4. 画质门控
-quality:
-  flip_initial_threshold: 0.980
-  flip_relaxed_threshold: 0.950
-  relaxation_patience: 10
-
-# 5. WebGL2 硬件基准测试
-benchmark:
-  port: 8099
-  resolution: [1280, 720]
-  sample_times: [0.0, 1.5, 3.0, 4.5, 6.0]
-  warmup_frames: 30
-  timed_samples: 12
-```
-
----
-
-## 🚀 快速上手
-
-### 1. 环境初始化
-
-```bash
-# 自动创建 Python 3.11 虚拟环境、安装依赖、安装 Playwright Chromium 浏览器并核验 config.yaml
-make setup
-```
-
-### 2. Google Cloud 授权
-
-```bash
-make auth
-```
-
-### 3. 运行演化优化流程
-
-```bash
-# 1. 级联演化：对多 Pass 项目（如 03）执行全管线拓扑级联优化（自动按开销分配预算、前序 Champion 固化传递）
-make run PROJECT=03 PROGRAMS=50
-
-# 2. 单 Shader 演化：仅指定优化某一特定 Pass
-make run PROJECT=03 SHADER=shaders/buffer_a.glsl PROGRAMS=50
-
-# 3. 单 Pass 项目演化（如 01）
-make run PROJECT=01 PROGRAMS=50
-```
-
-### 4. 查看 HTML 可视化报告
-
-```bash
-make report PROJECT=03
-```
-
-控制台将输出生成的报告链接，例如：
-`./artifacts/03/report.html`，双击或在浏览器中打开即可查看完整的交互式报告（包含多通道渲染管线性能分解表）。
-
----
-
-## 🛠️ 常用 Makefile 命令参考
-
-| 命令 | 说明 | 示例 |
-| :--- | :--- | :--- |
-| `make setup` | 初始化 Python venv、安装 pip 依赖及 Playwright 浏览器，校验 config.yaml | `make setup` |
-| `make auth` | 执行 Google Cloud ADC 认证 (`gcloud auth application-default login`) | `make auth` |
-| `make baseline` | **全管线性能剖析**：对项目下所有 Pass 执行 GPU 测速，输出耗时占比清单与核心瓶颈 | `make baseline PROJECT=03` |
-| `make baseline` (单着色器) | 仅针对指定单一 shader 文件捕获基准帧与 GPU 耗时 | `make baseline PROJECT=03 SHADER=shaders/buffer_a.glsl` |
-| `make profile` | 静态/AST 分析着色器代码性能瓶颈，输出建议优化的代码区间 | `make profile PROJECT=03` |
-| `make run` | 连接 Google Cloud AlphaEvolve 执行闭环演化优化（支持方案 2 级联多 Pass 演化） | `make run PROJECT=03 PROGRAMS=50` |
-| `make report` | 生成/展示自包含交互式 HTML 优化报告（含管线 Breakdown） | `make report PROJECT=03` |
-| `make test` | 执行全量单元测试套件 (包含 71 个测试项) | `make test` |
-| `make clean` | 清除 Python 字节码缓存和测试缓存 | `make clean` |
+3. **清理本地虚拟环境目录**：
+   ```bash
+   rm -rf venv/
+   ```
+   接收方获取项目后，仅需依照本文档 2.2 节运行 `make setup` 即可一键恢复虚拟环境、安装依赖与浏览器驱动。
