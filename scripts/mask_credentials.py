@@ -177,13 +177,13 @@ def mask_files(
             # Standardize project_id placeholder and comment
             content = re.sub(
                 r'project_id:\s*["\']?(?:<[^>]+>|' + (re.escape(project_id) if project_id else r'') + r')["\']?.*',
-                f'project_id: "{PROJECT_ID_PLACEHOLDER}" # 请在此填入您的 Google Cloud Project ID',
+                f'project_id: "{PROJECT_ID_PLACEHOLDER}" # Enter your Google Cloud Project ID here',
                 content
             )
             # Standardize ge_app_id placeholder and comment
             content = re.sub(
                 r'ge_app_id:\s*["\']?(?:<[^>]+>|' + (re.escape(ge_app_id) if ge_app_id else r'') + r')["\']?.*',
-                f'ge_app_id: "{GE_APP_ID_PLACEHOLDER}" # 请在此填入您的 Gemini Enterprise App/Engine ID',
+                f'ge_app_id: "{GE_APP_ID_PLACEHOLDER}" # Enter your Gemini Enterprise App/Engine ID here',
                 content
             )
 

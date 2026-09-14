@@ -1,53 +1,55 @@
 # ==============================================================================
 # Google Cloud AlphaEvolve Shader Optimization Configuration
 # ==============================================================================
-# 本文件为项目的【唯一全局配置文件】(Single Source of Truth)，统一管理 GCP 鉴权、
-# 演化超参数、模型混合配比、画质门控及本地硬件渲染基准测试参数。
+# This file serves as the Single Source of Truth for the project,
+# unifying GCP authentication, evolution hyperparameters, model mixture weights,
+# quality gates, and local hardware rendering benchmark settings.
 # ==============================================================================
 
-# 1. Google Cloud & Gemini Enterprise 凭据与服务配置
+# 1. Google Cloud & Gemini Enterprise Credentials and Service Settings
 gcp:
-  project_id: "<YOUR_GCP_PROJECT_ID>" # 请在此填入您的 Google Cloud Project ID (例如: my-gcp-project-123)
+  project_id: "<YOUR_GCP_PROJECT_ID>" # Enter your Google Cloud Project ID here (e.g., my-gcp-project-123)
   location: "global"
   collection: "default_collection"
-  ge_app_id: "<YOUR_GE_APP_ID>"       # 请在此填入您的 Gemini Enterprise App/Engine ID (例如: gemini-enterprise-12345678)
+  ge_app_id: "<YOUR_GE_APP_ID>"       # Enter your Gemini Enterprise App/Engine ID here (e.g., gemini-enterprise-12345678)
   assistant: "default_assistant"
   base_url: "discoveryengine.googleapis.com"
-  # 官方 alpha_evolve 库路径 (若在其他路径可在此直接指定绝对或相对路径)
+  # Official alpha_evolve library path (can specify absolute or relative path)
   alpha_evolve_path: "./alpha_evolve"
 
-# 2. 演化控制与超参数设置
+# 2. Evolution Control & Hyperparameter Settings
 evolution:
-  max_programs_generated: 50    # 根据实际需求更改
-  max_programs_evaluated: 50    # 根据实际需求更改
-  # 【重要】本地硬件 GPU 测速必须串行化！
-  # 多个评估 worker 并发会导致多个浏览器页面争抢物理 GPU 渲染队列，
-  # 引发驱动排队和上下文切换抖动，导致微秒级计时 (EXT_disjoint_timer_query) 失真。
+  max_programs_generated: 50    # Adjust based on experiment requirements
+  max_programs_evaluated: 50    # Adjust based on experiment requirements
+  # [IMPORTANT] Local hardware GPU benchmarking MUST be serialized!
+  # Multiple concurrent evaluation workers will cause browser tabs to compete for the
+  # physical GPU command queue, causing driver contention, context switches, and
+  # jitter in microsecond-level hardware timer queries (EXT_disjoint_timer_query).
   concurrency: 1
   worker_concurrency: 1
   parallel_evaluation: false
   idle_timeout_s: 120
 
-# 3. Gemini 大模型生成权重混合配比
+# 3. Gemini LLM Generation Mixture Weights
 models:
   - name: "gemini-3.5-flash"
     weight: 0.70
   - name: "gemini-3.1-pro-preview"
     weight: 0.30
 
-# 4. 感知画质门控阈值
+# 4. Perceptual Quality Gate Thresholds
 quality:
-  flip_initial_threshold: 0.980    # NVIDIA FLIP 初始画质门限 (≥ 98%)
-  flip_relaxed_threshold: 0.950    # 自适应放宽后的最低画质门限 (≥ 95%)
-  relaxation_patience: 10          # 连续多少代无达标变体时触发自适应放宽
-  min_ssim_threshold: 0.950        # SSIM 最低辅助门槛
+  flip_initial_threshold: 0.980    # NVIDIA FLIP initial quality gate (≥ 98%)
+  flip_relaxed_threshold: 0.950    # Relaxed minimum quality gate (≥ 95%)
+  relaxation_patience: 10          # Consecutive failed generations before relaxing threshold
+  min_ssim_threshold: 0.950        # SSIM auxiliary minimum threshold
 
-# 5. WebGL 2.0 本地硬件基准测试 Harness 设置
+# 5. WebGL 2.0 Local Hardware Benchmark Harness Settings
 benchmark:
-  port: 8099                       # 本地评估静态服务端口
-  headless: true                   # 是否以无头模式运行 Playwright Chromium
-  resolution: [1280, 720]          # 测速画布基准分辨率 [宽, 高]
-  sample_times: [0.0, 1.5, 3.0, 4.5, 6.0]  # 采样的着色器运行时间戳序列 (秒)
-  warmup_frames: 30                # GPU 预热渲染帧数 (避开管线编译开销)
-  timed_samples: 12                # 每次取样的硬件 GPU 计时样本数 (取中位数)
-  playwright_channel: "chrome"     # 浏览器通道 (chrome / chromium)
+  port: 8099                       # Local evaluation HTTP server port
+  headless: true                   # Run Playwright Chromium in headless mode
+  resolution: [1280, 720]          # Benchmark canvas resolution [width, height]
+  sample_times: [0.0, 1.5, 3.0, 4.5, 6.0]  # Sampled shader animation timestamps in seconds
+  warmup_frames: 30                # GPU warmup frames (bypasses pipeline compilation overhead)
+  timed_samples: 12                # Hardware GPU timer query samples per timestamp (median taken)
+  playwright_channel: "chrome"     # Browser channel (chrome / chromium)
